@@ -5,5 +5,6 @@
 
 OUT_DIR="bin/debug"
 mkdir -p "$OUT_DIR"
-odin build ../src -out:$OUT_DIR/oui.bin -strict-style -vet -debug
+odin build src -out:$OUT_DIR/oui.bin -strict-style -vet -debug
 echo "Debug build created in $OUT_DIR"
+
