@@ -73,10 +73,6 @@ layout(location=2) in float o_r;
 
 out vec4 o_color;
 
-bool in_rect() {
-
-}
-
 void main() {
 	o_color = i_color;
 }
