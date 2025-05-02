@@ -8,6 +8,7 @@ import "core:mem"
 import "core:math/linalg"
 
 import sdl "vendor:sdl3"
+import stbi "vendor:stb/image"
 
 default_ctx : runtime.Context
 
@@ -26,6 +27,7 @@ Vec4 :: [4]f32
 Vertex_Data :: struct #align(4) {
 	pos: Vec3,
 	col: Vec4,
+	uv: Vec2,
 }
 
 main :: proc() {
@@ -74,10 +76,10 @@ main :: proc() {
 	defer sdl.ReleaseWindowFromGPUDevice(gpu, win)
 
 	verticies := []Vertex_Data {
-		{pos = {-0.5,  0.5, 0.0}, col = {1.0, 1.0, 0.0, 1.0}},
-		{pos = { 0.5,  0.5, 0.0}, col = {0.0, 1.0, 1.0, 1.0}},
-		{pos = {-0.5, -0.5, 0.0}, col = {1.0, 0.0, 1.0, 1.0}},
-		{pos = { 0.5, -0.5, 0.0}, col = {1.0, 1.0, 1.0, 1.0}},
+		{pos = {-0.5,  0.5, 0.0}, col = {1.0, 1.0, 0.0, 1.0}, uv = {0.0, 0.0}},
+		{pos = { 0.5,  0.5, 0.0}, col = {0.0, 1.0, 1.0, 1.0}, uv = {0.0, 1.0}},
+		{pos = {-0.5, -0.5, 0.0}, col = {1.0, 0.0, 1.0, 1.0}, uv = {1.0, 0.0}},
+		{pos = { 0.5, -0.5, 0.0}, col = {1.0, 1.0, 1.0, 1.0}, uv = {1.0, 1.0}},
 	}
 	verticies_size := len(verticies) * size_of(verticies[0])
 
@@ -128,7 +130,45 @@ main :: proc() {
 			format = .FLOAT4,
 			offset = u32(offset_of(Vertex_Data, col)),
 		},
+		{
+			location = 2,
+			format = .FLOAT2,
+			offset = u32(offset_of(Vertex_Data, uv)),
+		},
 	}
+
+	img_size : [2]i32
+	img_path : cstring = "./assets/textures/cobblestone_1.png"
+	ch : i32 = 0
+	img_data := stbi.load(img_path, &img_size.x, &img_size.y, &ch, 4)
+	if img_data == nil {
+		log.errorf("Failed to load texture: %s", stbi.failure_reason())
+		os.exit(1)
+	}
+	defer stbi.image_free(img_data)
+	log.infof("Loaded texture: %s (%i)", img_path, ch)
+
+	img_data_size := img_size.x * img_size.y * ch
+
+	tex := sdl.CreateGPUTexture(
+		gpu,
+		{
+			type = .D2,
+			format = .R8G8B8A8_UNORM,
+			usage = {.SAMPLER},
+			width = u32(img_size.x),
+			height = u32(img_size.y),
+			layer_count_or_depth = 1,
+			num_levels = 1,
+			sample_count = ._1,
+			props = 0,
+		},
+	)
+	if tex == nil {
+		log.errorf("Failed to create gpu texture: %s", sdl.GetError())
+		os.exit(1)
+	}
+	defer sdl.ReleaseGPUTexture(gpu, tex)
 
 	tbuf := sdl.CreateGPUTransferBuffer(gpu, sdl.GPUTransferBufferCreateInfo {
 		usage = .UPLOAD,
@@ -140,6 +180,16 @@ main :: proc() {
 	mem.copy(tmem, raw_data(verticies), verticies_size)
 	mem.copy(tmem[verticies_size:], raw_data(indices), indices_size)
 	sdl.UnmapGPUTransferBuffer(gpu, tbuf)
+
+	tex_tbuf := sdl.CreateGPUTransferBuffer(gpu, sdl.GPUTransferBufferCreateInfo {
+		usage = .UPLOAD,
+		size = u32(img_data_size),
+		props = 0,
+	})
+
+	tex_tmem := cast([^]byte)sdl.MapGPUTransferBuffer(gpu, tex_tbuf, false)
+	mem.copy(tex_tmem, img_data, int(img_data_size))
+	sdl.UnmapGPUTransferBuffer(gpu, tex_tbuf)
 
 	copy_cmd_buf := sdl.AcquireGPUCommandBuffer(gpu)
 	copy_pass := sdl.BeginGPUCopyPass(copy_cmd_buf)
@@ -168,6 +218,25 @@ main :: proc() {
 		},
 		false,
 	)
+	sdl.UploadToGPUTexture(
+		copy_pass,
+		{
+			transfer_buffer = tex_tbuf,
+			offset = 0,
+		},
+		{
+			texture = tex,
+			mip_level = 0,
+			layer = 0,
+			x = 0,
+			y = 0,
+			z = 0,
+			w = u32(img_size.x),
+			h = u32(img_size.y),
+			d = 1,
+		},
+		false,
+	)
 	sdl.EndGPUCopyPass(copy_pass)
 
 	if ok := sdl.SubmitGPUCommandBuffer(copy_cmd_buf); !ok {
@@ -176,6 +245,28 @@ main :: proc() {
 	}
 
 	sdl.ReleaseGPUTransferBuffer(gpu, tbuf)
+	sdl.ReleaseGPUTransferBuffer(gpu, tex_tbuf)
+
+	sampler := sdl.CreateGPUSampler(gpu, {
+		min_filter = .NEAREST,
+		mag_filter = .NEAREST,
+		mipmap_mode = .NEAREST,
+		address_mode_u = .REPEAT,
+		address_mode_v = .REPEAT,
+		address_mode_w = .REPEAT,
+		mip_lod_bias = 0.0,
+		max_anisotropy = 0.0,
+		compare_op = .INVALID,
+		min_lod = 0.0,
+		max_lod = 0.0,
+		enable_anisotropy = false,
+		enable_compare = false,
+	})
+	if sampler == nil {
+		log.errorf("Failed to create gpu sampler: %s", sdl.GetError())
+		os.exit(1)
+	}
+	defer sdl.ReleaseGPUSampler(gpu, sampler)
 
 	vshader := sdl.CreateGPUShader(gpu, {
 		code_size = len(vshader_src),
@@ -200,7 +291,7 @@ main :: proc() {
 		entrypoint = "main",
 		format = {.SPIRV},
 		stage = .FRAGMENT,
-		num_samplers = 0,
+		num_samplers = 1,
 		num_storage_textures = 0,
 		num_storage_buffers = 0,
 		num_uniform_buffers = 0,
@@ -270,7 +361,7 @@ main :: proc() {
 
 		rotation += dt * rotation_speed
 		if rotation > 360.0 do rotation = 0.0
-		model_mat = linalg.matrix4_translate_f32({0, 0, -5}) * linalg.matrix4_rotate_f32(rotation, {0, 1, 0})
+		model_mat = linalg.matrix4_translate_f32({0, 0, -2.5}) * linalg.matrix4_rotate_f32(rotation, {0, 1, 0})
 		ubo.mvp = proj_mat * model_mat
 
 		// render
@@ -310,6 +401,10 @@ main :: proc() {
 			._16BIT,
 		)
 		sdl.PushGPUVertexUniformData(cmd_buf, 0, &ubo, size_of(ubo))
+		sdl.BindGPUFragmentSamplers(render_pass, 0, &(sdl.GPUTextureSamplerBinding {
+			texture = tex,
+			sampler = sampler,
+		}), 1)
 
 		sdl.DrawGPUIndexedPrimitives(render_pass, u32(len(indices)), 1, 0, 0, 0)
 
