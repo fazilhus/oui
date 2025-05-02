@@ -3,3 +3,6 @@
 
 bin/*/*.exe
 bin/*/*.pdb
+*.sublime-project
+*.sublime-workspace
+shaders/spv/*.spv.*
