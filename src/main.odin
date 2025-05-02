@@ -12,8 +12,8 @@ import stbi "vendor:stb/image"
 
 default_ctx : runtime.Context
 
-vshader_src := #load("../shaders/spv/def.spv.vert")
-fshader_src := #load("../shaders/spv/def.spv.frag")
+vshader_src := #load("../assets/shaders/spv/def.spv.vert")
+fshader_src := #load("../assets/shaders/spv/def.spv.frag")
 
 UBO :: struct {
 	mvp : matrix[4,4]f32,

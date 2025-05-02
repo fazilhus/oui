@@ -1,8 +1,9 @@
 ﻿ols.json
 .vscode
 
-bin/*/*.exe
-bin/*/*.pdb
+*.exe
+*.pdb
+*.rdi
 *.sublime-project
 *.sublime-workspace
-shaders/spv/*.spv.*
+assets/shaders/spv/*.spv.*
