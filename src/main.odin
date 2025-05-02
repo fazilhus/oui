@@ -48,32 +48,30 @@ main :: proc() {
 		log.errorf("Failed to init sdl: %s", sdl.GetError())
 		os.exit(1)
 	}
+	defer sdl.Quit()
 	log.infof("Initialized SDL3")
 
 	win := sdl.CreateWindow("OUI", 1280, 720, {})
 	if win == nil {
 		log.errorf("Failed to create window: %s", sdl.GetError)
-		sdl.Quit()
 		os.exit(1)
 	}
+	defer sdl.DestroyWindow(win)
 	log.infof("Created a window %ix%i", 1280, 720)
 
 	gpu := sdl.CreateGPUDevice({.SPIRV}, true, nil)
 	if gpu == nil {
 		log.errorf("Failed to create gpu device: %s", sdl.GetError())
-		sdl.DestroyWindow(win)
-		sdl.Quit()
 		os.exit(1)
 	}
+	defer sdl.DestroyGPUDevice(gpu)
 	log.infof("Created a gpu device {}", sdl.GetGPUDeviceDriver(gpu))
 
 	if ok := sdl.ClaimWindowForGPUDevice(gpu, win); !ok {
 		log.errorf("Failed to claim gpu device to window: %s", sdl.GetError())
-		sdl.DestroyGPUDevice(gpu)
-		sdl.DestroyWindow(win)
-		sdl.Quit()
 		os.exit(1)
 	}
+	defer sdl.ReleaseWindowFromGPUDevice(gpu, win)
 
 	verticies := []Vertex_Data {
 		{pos = {-0.5,  0.5, 0.0}, col = {1.0, 1.0, 0.0, 1.0}},
@@ -102,12 +100,22 @@ main :: proc() {
 		size = u32(verticies_size),
 		props = 0,
 	})
+	if vbuf == nil {
+		log.errorf("Failed to create gpu buffer: %s", sdl.GetError())
+		os.exit(1)
+	}
+	defer sdl.ReleaseGPUBuffer(gpu, vbuf)
 
 	ibuf := sdl.CreateGPUBuffer(gpu, {
 		usage = {.INDEX},
 		size = u32(indices_size),
 		props = 0,
 	})
+	if ibuf == nil {
+		log.errorf("Failed to create gpu buffer: %s", sdl.GetError())
+		os.exit(1)
+	}
+	defer sdl.ReleaseGPUBuffer(gpu, ibuf)
 
 	vertex_attribs := []sdl.GPUVertexAttribute {
 		{
@@ -164,10 +172,6 @@ main :: proc() {
 
 	if ok := sdl.SubmitGPUCommandBuffer(copy_cmd_buf); !ok {
 		log.errorf("Failed to submit gpu copy cmd buffer: %s", sdl.GetError())
-		sdl.ReleaseWindowFromGPUDevice(gpu, win)
-		sdl.DestroyGPUDevice(gpu)
-		sdl.DestroyWindow(win)
-		sdl.Quit()
 		os.exit(1)
 	}
 
@@ -184,6 +188,11 @@ main :: proc() {
 		num_storage_buffers = 0,
 		num_uniform_buffers = 1,
 	})
+	if vshader == nil {
+		log.errorf("Failed to create gpu shader: %s", sdl.GetError())
+		os.exit(1)
+	}
+	defer sdl.ReleaseGPUShader(gpu, vshader)
 
 	fshader := sdl.CreateGPUShader(gpu, {
 		code_size = len(fshader_src),
@@ -196,6 +205,11 @@ main :: proc() {
 		num_storage_buffers = 0,
 		num_uniform_buffers = 0,
 	})
+	if fshader == nil {
+		log.errorf("Failed to create gpu shader: %s", sdl.GetError())
+		os.exit(1)
+	}
+	defer sdl.ReleaseGPUShader(gpu, fshader)
 
 	def_pipeline := sdl.CreateGPUGraphicsPipeline(gpu, {
 		vertex_shader = vshader,
@@ -214,8 +228,11 @@ main :: proc() {
 			num_color_targets = 1,
 		},
 	})
-	sdl.ReleaseGPUShader(gpu, vshader)
-	sdl.ReleaseGPUShader(gpu, fshader)
+	if def_pipeline == nil {
+		log.errorf("Failed to create gpu pipeline: %s", sdl.GetError())
+		os.exit(1)
+	}
+	defer sdl.ReleaseGPUGraphicsPipeline(gpu, def_pipeline)
 
 	rotation_speed := linalg.to_radians(f32(90))
 	rotation : f32 = 0
@@ -303,12 +320,4 @@ main :: proc() {
 			break main_loop
 		}
 	}
-
-	sdl.ReleaseGPUBuffer(gpu, vbuf)
-	sdl.ReleaseGPUBuffer(gpu, ibuf)
-	sdl.ReleaseGPUGraphicsPipeline(gpu, def_pipeline)
-	sdl.ReleaseWindowFromGPUDevice(gpu, win)
-	sdl.DestroyGPUDevice(gpu)
-	sdl.DestroyWindow(win)
-	sdl.Quit()
 }
