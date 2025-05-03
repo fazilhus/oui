@@ -53,13 +53,14 @@ main :: proc() {
 	defer sdl.Quit()
 	log.infof("Initialized SDL3")
 
-	win := sdl.CreateWindow("OUI", 1280, 720, {})
+	win_size: [2]i32 = {1280, 720}
+	win := sdl.CreateWindow("OUI", win_size.x, win_size.y, {})
 	if win == nil {
 		log.errorf("Failed to create window: %s", sdl.GetError)
 		os.exit(1)
 	}
 	defer sdl.DestroyWindow(win)
-	log.infof("Created a window %ix%i", 1280, 720)
+	log.infof("Created a window %ix%i", win_size.x, win_size.y)
 
 	gpu := sdl.CreateGPUDevice({.SPIRV}, true, nil)
 	if gpu == nil {
@@ -75,10 +76,27 @@ main :: proc() {
 	}
 	defer sdl.ReleaseWindowFromGPUDevice(gpu, win)
 
+	depth_tex := sdl.CreateGPUTexture(gpu, {
+			type = .D2,
+			format = .D24_UNORM,
+			usage = {.DEPTH_STENCIL_TARGET},
+			width = u32(win_size.x),
+			height = u32(win_size.y),
+			layer_count_or_depth = 1,
+			num_levels = 1,
+			sample_count = ._1,
+			props = 0,
+	})
+	if depth_tex == nil {
+		log.errorf("Failed to create gpu depth texture: %s", sdl.GetError())
+		os.exit(1)
+	}
+	defer sdl.ReleaseGPUTexture(gpu, depth_tex)
+
 	verticies := []Vertex_Data {
 		{pos = {-0.5,  0.5, 0.0}, col = {1.0, 1.0, 0.0, 1.0}, uv = {0.0, 0.0}},
-		{pos = { 0.5,  0.5, 0.0}, col = {0.0, 1.0, 1.0, 1.0}, uv = {0.0, 1.0}},
-		{pos = {-0.5, -0.5, 0.0}, col = {1.0, 0.0, 1.0, 1.0}, uv = {1.0, 0.0}},
+		{pos = { 0.5,  0.5, 0.0}, col = {0.0, 1.0, 1.0, 1.0}, uv = {1.0, 0.0}},
+		{pos = {-0.5, -0.5, 0.0}, col = {1.0, 0.0, 1.0, 1.0}, uv = {0.0, 1.0}},
 		{pos = { 0.5, -0.5, 0.0}, col = {1.0, 1.0, 1.0, 1.0}, uv = {1.0, 1.0}},
 	}
 	verticies_size := len(verticies) * size_of(verticies[0])
@@ -312,12 +330,20 @@ main :: proc() {
 			num_vertex_attributes = u32(len(vertex_attribs)),
 		},
 		primitive_type = .TRIANGLELIST,
+		depth_stencil_state = {
+			compare_op = .LESS,
+			enable_depth_test = true,
+			enable_depth_write = true,
+		},
 		target_info = {
 			color_target_descriptions = &(sdl.GPUColorTargetDescription {
 				format = sdl.GetGPUSwapchainTextureFormat(gpu, win),
 			}),
 			num_color_targets = 1,
+			depth_stencil_format = .D24_UNORM,
+			has_depth_stencil_target = true,
 		},
+		props = 0,
 	})
 	if def_pipeline == nil {
 		log.errorf("Failed to create gpu pipeline: %s", sdl.GetError())
@@ -361,7 +387,7 @@ main :: proc() {
 
 		rotation += dt * rotation_speed
 		if rotation > 360.0 do rotation = 0.0
-		model_mat = linalg.matrix4_translate_f32({0, 0, -2.5}) * linalg.matrix4_rotate_f32(rotation, {0, 1, 0})
+		model_mat = linalg.matrix4_translate_f32({0, 0, -3.0}) * linalg.matrix4_rotate_f32(rotation, {0, 1, 0})
 		ubo.mvp = proj_mat * model_mat
 
 		// render
@@ -380,7 +406,18 @@ main :: proc() {
 			load_op = .CLEAR,
 			store_op = .STORE,
 		}
-		render_pass := sdl.BeginGPURenderPass(cmd_buf, &color_target, 1, nil)
+		depth_target := sdl.GPUDepthStencilTargetInfo {
+			texture = depth_tex,
+			clear_depth = 1,
+			load_op = .CLEAR,
+			store_op = .DONT_CARE,
+		}
+		render_pass := sdl.BeginGPURenderPass(
+			cmd_buf,
+			&color_target,
+			1,
+			&depth_target,
+		)
 
 		sdl.BindGPUGraphicsPipeline(render_pass, def_pipeline)
 		sdl.BindGPUVertexBuffers(
@@ -405,6 +442,13 @@ main :: proc() {
 			texture = tex,
 			sampler = sampler,
 		}), 1)
+
+		sdl.DrawGPUIndexedPrimitives(render_pass, u32(len(indices)), 1, 0, 0, 0)
+
+		ubo1 : UBO
+		ubo1.mvp = proj_mat * linalg.matrix4_translate_f32({0, 0, -5.0})
+
+		sdl.PushGPUVertexUniformData(cmd_buf, 0, &ubo1, size_of(ubo1))
 
 		sdl.DrawGPUIndexedPrimitives(render_pass, u32(len(indices)), 1, 0, 0, 0)
 
