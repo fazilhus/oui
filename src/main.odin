@@ -10,6 +10,8 @@ import "core:math/linalg"
 import sdl "vendor:sdl3"
 import stbi "vendor:stb/image"
 
+import shd "render/shader"
+
 default_ctx : runtime.Context
 
 vshader_src := #load("../assets/shaders/spv/def.vert")
@@ -33,6 +35,11 @@ Vertex_Data :: struct #align(4) {
 main :: proc() {
 	context.logger = log.create_console_logger()
 	default_ctx = context
+
+	shd.init("./assets/shaders/glsl/")
+	defer shd.deinit()
+	shd.register_shaders()
+
 
 	sdl.SetLogPriorities(.VERBOSE)
 	sdl.SetLogOutputFunction(proc "c" (userdata: rawptr, category: sdl.LogCategory, priority: sdl.LogPriority, message: cstring) {
