@@ -6,6 +6,8 @@ import "core:log"
 import "core:os"
 import "core:mem"
 import "core:math/linalg"
+import fp "core:path/filepath"
+import ss "core:strings"
 
 import sdl "vendor:sdl3"
 import stbi "vendor:stb/image"
@@ -37,9 +39,12 @@ main :: proc() {
 	context.logger = log.create_console_logger()
 	default_ctx = context
 
-	cfg.read_or_create_config()
+	if !cfg.read_config() {
+		log.errorf("could not find config file, aborting")
+		return
+	}
 
-	shd.init("./assets/shaders/glsl/")
+	shd.init(cfg.cfg.assets_path)
 	defer shd.deinit()
 	shd.register_shaders()
 
@@ -55,6 +60,11 @@ main :: proc() {
 			case .CRITICAL: log.panic(message)
 		}
 	}, nil)
+
+	if ok := sdl.SetAppMetadata("oui", "0.0.0", "com.oui.oui"); !ok {
+		log.errorf("Failed to set app metadate: %s", sdl.GetError())
+		os.exit(1)
+	}
 
 	if ok := sdl.Init({.VIDEO}); !ok {
 		log.errorf("Failed to init sdl: %s", sdl.GetError())
@@ -166,7 +176,8 @@ main :: proc() {
 	}
 
 	img_size : [2]i32
-	img_path : cstring = "./assets/textures/cobblestone_1.png"
+	tex_path := fp.join({cfg.cfg.assets_path, "textures\\cobblestone_1.png"})
+	img_path : cstring = ss.clone_to_cstring(tex_path)
 	ch : i32 = 0
 	img_data := stbi.load(img_path, &img_size.x, &img_size.y, &ch, 4)
 	if img_data == nil {
@@ -376,7 +387,13 @@ main :: proc() {
 	dt : f32 = 0
 
 	main_loop: for {
-		// event handling
+		last_frame = new_frame
+		new_frame = sdl.GetTicks()
+		dt += f32(new_frame - last_frame) / 1000.0
+		if dt < 1.0/60.0 {
+			continue
+		}
+
 		e : sdl.Event
 		event_loop: for sdl.PollEvent(&e) {
 			#partial switch e.type {
@@ -389,11 +406,6 @@ main :: proc() {
 					}
 			}
 		}
-
-		// update game state
-		last_frame = new_frame
-		new_frame = sdl.GetTicks()
-		dt = f32(new_frame - last_frame) / 1000.0
 
 		rotation += dt * rotation_speed
 		if rotation > 360.0 do rotation = 0.0
@@ -468,5 +480,7 @@ main :: proc() {
 			log.errorf("Failed to submit gpu cmd buffer: %s", sdl.GetError())
 			break main_loop
 		}
+		
+		dt = 0
 	}
 }

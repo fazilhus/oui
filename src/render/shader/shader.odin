@@ -2,11 +2,12 @@ package shader
 
 import "core:log"
 import "core:os/os2"
-import "core:path/filepath"
+import fp "core:path/filepath"
 import "core:time"
 
 Shader_ctx :: struct {
-	path: string,
+	glsl_path: string,
+	spv_path: string,
 }
 
 Shader_Source_Type :: enum {
@@ -16,7 +17,10 @@ Shader_Source_Type :: enum {
 
 shader_ctx: Shader_ctx
 
-shader_sources: map[string]time.Time
+@(private)
+glsl_shader_sources: map[string]time.Time
+
+shader_sources: []string = nil
 
 Shader_Binary :: struct {
 	name: string,
@@ -24,50 +28,61 @@ Shader_Binary :: struct {
 	frag: []u8,
 }
 
-init :: proc(shader_path: string) {
-	assert(os2.is_dir(shader_path))
+init :: proc(cfg_path: string) {
+	path := fp.join({cfg_path, "shaders\\glsl"})
+	if !os2.is_directory(path) {
+		log.errorf("no path to glsl shaders found (%s)", path)
+		return
+	}
+	shader_ctx.glsl_path = path
+	glsl_shader_sources = make(map[string]time.Time)
 
-	shader_ctx.path = shader_path
-	shader_sources = make(map[string]time.Time)
+	path = fp.join({cfg_path, "shaders\\spv"})
+	if !os2.is_directory(path) {
+		log.errorf("no path to spv shaders found (%s)", path)
+		return
+	}
+	shader_ctx.spv_path = path
 }
 
 deinit :: proc() {
-	delete(shader_sources)
+	delete(glsl_shader_sources)
+	if shader_sources != nil {
+		delete(shader_sources)
+	}
 }
 
 register_shaders :: proc() {
-	assert(os2.is_directory(shader_ctx.path))
-
-	fd, open_err := os2.open(shader_ctx.path)
+	fd, open_err := os2.open(shader_ctx.glsl_path)
 	if open_err != nil {
-		log.errorf("Could not open %s: %s", shader_ctx.path, open_err)
+		log.errorf("Could not open %s: %s", shader_ctx.glsl_path, open_err)
 	}
 
-	files, read_err := os2.read_dir(fd, 0, context.temp_allocator)
+	files, read_err := os2.read_directory(fd, 0, context.temp_allocator)
 	if read_err != nil {
-		log.errorf("Could not read %s: %s", shader_ctx.path, read_err)
+		log.errorf("Could not read %s: %s", shader_ctx.glsl_path, read_err)
 		return
 	}
 
 	for file in files {
-		name := filepath.short_stem(file.name)
+		name := fp.short_stem(file.name)
 		time, err := os2.modification_time_by_path(file.fullpath)
 		if err != nil {
 			log.errorf("Could not get file last write time %s: %s", file.fullpath, err)
 			continue
 		}
 
-		if name in shader_sources {
-			if time._nsec > shader_sources[name]._nsec {
-				shader_sources[name] = time
+		if name in glsl_shader_sources {
+			if time._nsec > glsl_shader_sources[name]._nsec {
+				glsl_shader_sources[name] = time
 			}
 		} else {
-			shader_sources[name] = time
+			glsl_shader_sources[name] = time
 		}
 		log.infof("Registered shader source: %s, last write time: %i", file.name, time)
 	}
 
-	for it in shader_sources {
-		log.infof("Registered shader: %s %i", it, shader_sources[it])
+	for it in glsl_shader_sources {
+		log.infof("Registered shader: %s %i", it, glsl_shader_sources[it])
 	}
 }

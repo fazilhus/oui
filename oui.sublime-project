@@ -1,0 +1,49 @@
+{
+	"folders":[
+		{
+			"path": ".",
+		},
+		{
+			"path": "c:\\Users\\khusn\\bin\\Odin\\core",
+		},
+		{
+			"path": "c:\\Users\\khusn\\bin\\Odin\\vendor",
+		},
+	],
+	"build_systems":[
+		{
+			"name": "odin build",
+			"selector": "source.odin",
+			"file_regex": "^(.+)\\(([0-9]+):([0-9]+)\\) (.+)$",
+			"variants": [
+				{
+					"name": "odin build debug",
+					"shell_cmd": "odin build $project_path\\src -out:$project_path\\bin\\debug\\oui.exe -collection:ext=$project_path\\ext -o:minimal -debug -vet -warnings-as-errors -strict-style && $project_path\\bin\\debug\\oui.exe",
+				},
+				{
+					"name": "odin build release",
+					"shell_cmd": "odin build $project_path\\src -out:$project_path\\bin\\release\\oui.exe -collection:ext=$project_path\\ext -o:speed -no-bounds-check -disable-assert -microarch:native && $project_path\\bin\\release\\oui.exe",
+				},
+			],
+		},
+	],
+	"settings":
+	{
+		"auto_complete": false,
+		"LSP":
+		{
+			"odin":
+			{
+				"enabled": true,
+				"initializationOptions": {
+					"collections": [
+						{
+							"name": "ext",
+							"path": "$project_path\\ext"
+						}
+					],
+				},
+			}
+		}
+	},
+}
