@@ -10,6 +10,7 @@ import "core:math/linalg"
 import sdl "vendor:sdl3"
 import stbi "vendor:stb/image"
 
+import cfg "config"
 import shd "render/shader"
 
 default_ctx : runtime.Context
@@ -35,6 +36,8 @@ Vertex_Data :: struct #align(4) {
 main :: proc() {
 	context.logger = log.create_console_logger()
 	default_ctx = context
+
+	cfg.read_or_create_config()
 
 	shd.init("./assets/shaders/glsl/")
 	defer shd.deinit()
